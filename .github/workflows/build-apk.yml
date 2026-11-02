@@ -4,7 +4,8 @@ name: Build YarShodan APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -17,32 +18,58 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Extract Kotlin project
+      - name: Check ZIP file
         run: |
-          mkdir -p unpacked
-          unzip -q YarShodan.zip -d unpacked
-
-          WRAPPER=$(find "$GITHUB_WORKSPACE/unpacked" \
-            -type f -name gradlew -print -quit)
-
-          if [ -z "$WRAPPER" ]; then
-            echo "ERROR: gradlew was not found in the ZIP."
-            echo "Checking for Gradle project files:"
-            find unpacked -type f \
-              \( -name settings.gradle -o \
-                 -name settings.gradle.kts \)
+          if [ ! -f YarShodan.zip ]; then
+            echo "ERROR: YarShodan.zip not found in repository root."
+            ls -la
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$WRAPPER")
+          echo "ZIP contents:"
+          unzip -Z1 YarShodan.zip | head -80
+
+      - name: Extract and locate Android project
+        run: |
+          mkdir -p "$RUNNER_TEMP/yarshodan"
+          unzip -q YarShodan.zip -d "$RUNNER_TEMP/yarshodan"
+
+          echo "Searching for Gradle project..."
+          find "$RUNNER_TEMP/yarshodan" -type f \
+            \( -name settings.gradle \
+            -o -name settings.gradle.kts \)
+
+          PROJECT_FILE=$(find "$RUNNER_TEMP/yarshodan" \
+            -type f \
+            \( -name settings.gradle \
+            -o -name settings.gradle.kts \) \
+            -print -quit)
+
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "ERROR: No Gradle settings file found in ZIP."
+            echo "The ZIP may not contain a complete Android project."
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PROJECT_FILE")
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          chmod +x "$WRAPPER"
+
+          echo "Project root: $PROJECT_DIR"
+          ls -la "$PROJECT_DIR"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Install Android SDK packages
         run: |
@@ -50,7 +77,7 @@ jobs:
             -type f -name sdkmanager -print -quit)
 
           if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager was not found."
+            echo "ERROR: Android sdkmanager not found."
             exit 1
           fi
 
@@ -68,11 +95,30 @@ jobs:
       - name: Build debug APK
         run: |
           cd "$PROJECT_DIR"
-          ./gradlew --no-daemon assembleDebug
+
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew --no-daemon assembleDebug
+          else
+            gradle --no-daemon assembleDebug
+          fi
+
+      - name: Find and upload APK
+        if: success()
+        run: |
+          mkdir -p "$RUNNER_TEMP/apk"
+          find "$PROJECT_DIR" -type f -name '*.apk' \
+            -path '*/outputs/apk/debug/*' \
+            -exec cp {} "$RUNNER_TEMP/apk/" \;
+
+          if [ -z "$(ls -A "$RUNNER_TEMP/apk")" ]; then
+            echo "ERROR: No debug APK was generated."
+            exit 1
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: YarShodan-debug-apk
-          path: unpacked/**/build/outputs/apk/debug/*.apk
+          path: ${{ runner.temp }}/apk/*.apk
           if-no-files-found: error
