@@ -1,4 +1,5 @@
-name: Build YarShodan Kotlin APK
+
+name: Build YarShodan APK
 
 on:
   workflow_dispatch:
@@ -11,6 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,29 +23,56 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK packages
-        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
-
       - name: Extract Kotlin project
         run: |
-          mkdir -p project
-          unzip -q YarShodan.zip -d project
-          cp -a project/ChillehyarMahdaviV37/. .
+          mkdir -p unpacked
+          unzip -q YarShodan.zip -d unpacked
+
+          WRAPPER=$(find "$GITHUB_WORKSPACE/unpacked" \
+            -type f -name gradlew -print -quit)
+
+          if [ -z "$WRAPPER" ]; then
+            echo "ERROR: gradlew was not found in the ZIP."
+            echo "Checking for Gradle project files:"
+            find unpacked -type f \
+              \( -name settings.gradle -o \
+                 -name settings.gradle.kts \)
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$WRAPPER")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          chmod +x "$WRAPPER"
+
+      - name: Install Android SDK packages
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
+            -type f -name sdkmanager -print -quit)
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager was not found."
+            exit 1
+          fi
+
+          yes | "$SDKMANAGER" --licenses || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-34" \
+            "platforms;android-35" \
+            "platforms;android-36" \
+            "build-tools;34.0.0" \
+            "build-tools;35.0.0" \
+            "build-tools;36.0.0"
 
       - name: Build debug APK
-        run: gradle --no-daemon assembleDebug
+        run: |
+          cd "$PROJECT_DIR"
+          ./gradlew --no-daemon assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: YarShodan-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: unpacked/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
