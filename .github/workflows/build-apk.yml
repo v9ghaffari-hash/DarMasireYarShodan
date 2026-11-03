@@ -12,19 +12,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Check project
+        run: |
+          cd extracted/project/ChillehyarMahdaviV37
+          ls -la
 
       - name: Build APK
+        working-directory: extracted/project/ChillehyarMahdaviV37
         run: |
           if [ -f gradlew ]; then
             chmod +x gradlew
@@ -35,6 +43,9 @@ jobs:
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: DarMasireYarShodan-APK
-          path: '**/build/outputs/apk/debug/*.apk'
+          path: extracted/project/ChillehyarMahdaviV37/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
