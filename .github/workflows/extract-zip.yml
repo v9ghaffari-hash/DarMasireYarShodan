@@ -1,5 +1,5 @@
 
-name: Extract YarShodan ZIP
+name: Extract Any ZIP File
 
 on:
   workflow_dispatch:
@@ -12,63 +12,57 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract ZIP into YarShodan
+      - name: Find and Extract ZIP
         shell: bash
         run: |
-          set -euo pipefail
+          set -e
 
-          ZIP_FILE=""
+          echo "Searching for ZIP files..."
 
-          for file in YarShodan.zip project.zip Project.zip; do
-            if [ -f "$file" ]; then
-              ZIP_FILE="$file"
-              break
-            fi
-          done
+          mapfile -t zip_files < <(find . -maxdepth 1 -type f -iname "*.zip" ! -path "./.git/*" | sort)
 
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: ZIP file was not found."
-            ls -la
+          if [ ${#zip_files[@]} -eq 0 ]; then
+            echo "ERROR: No ZIP file found in repository root."
             exit 1
           fi
 
-          echo "Found ZIP: $ZIP_FILE"
+          mkdir -p extracted
 
-          TEMP_DIR="$(mktemp -d)"
-          unzip -q "$ZIP_FILE" -d "$TEMP_DIR"
+          for zip_file in "${zip_files[@]}"; do
+            echo "Extracting: $zip_file"
 
-          COUNT="$(find "$TEMP_DIR" -mindepth 1 -maxdepth 1 | wc -l)"
-          SOURCE="$TEMP_DIR"
+            folder_name="$(basename "$zip_file" .zip)"
+            folder_name="${folder_name%.*}"
 
-          if [ "$COUNT" -eq 1 ] && \
-             [ -d "$(find "$TEMP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)" ]; then
-            SOURCE="$(find "$TEMP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
-          fi
+            # Make folder name safe
+            folder_name="$(echo "$folder_name" | tr ' ' '_' | tr -cd '[:alnum:]_.-')"
 
-          mkdir -p YarShodan
-          cp -a "$SOURCE"/. YarShodan/
+            if [ -z "$folder_name" ]; then
+              folder_name="extracted_project"
+            fi
 
-          rm -rf "$TEMP_DIR"
+            target="extracted/$folder_name"
+            mkdir -p "$target"
 
-          echo "ZIP extracted into YarShodan."
-          find YarShodan -maxdepth 3 -type f | head -n 100
+            unzip -o "$zip_file" -d "$target"
+
+            echo "Extracted into: $target"
+          done
 
       - name: Commit extracted files
         shell: bash
         run: |
-          set -euo pipefail
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add YarShodan
+          git add extracted
 
           if git diff --cached --quiet; then
-            echo "No new changes to commit."
+            echo "No new extracted files to commit."
           else
-            git commit -m "Extract Android project into YarShodan folder"
+            git commit -m "Extract ZIP files automatically"
             git push
           fi
