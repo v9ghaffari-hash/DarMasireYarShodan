@@ -1,32 +1,7 @@
 
-name: Build YarShodan APK
-
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-
-permissions:
-  contents: read
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
       - name: Configure Android SDK
         run: |
-          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
 
           echo "Android SDK: $SDK_ROOT"
 
@@ -38,7 +13,7 @@ jobs:
             exit 1
           fi
 
-          chmod +x "$SDKMANAGER"
+          echo "Using: $SDKMANAGER"
 
           yes | "$SDKMANAGER" \
             --sdk_root="$SDK_ROOT" --licenses || true
@@ -47,51 +22,3 @@ jobs:
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0"
-
-          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
-
-      - name: Extract project ZIP
-        run: |
-          if [ ! -f project.zip ]; then
-            echo "ERROR: project.zip not found"
-            exit 1
-          fi
-
-          mkdir -p extracted
-          unzip -o project.zip -d extracted
-
-      - name: Find Android project
-        id: project
-        run: |
-          PROJECT_FILE=$(find extracted -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            | head -n 1)
-
-          if [ -z "$PROJECT_FILE" ]; then
-            echo "ERROR: settings.gradle not found"
-            find extracted -maxdepth 4 -type f
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$PROJECT_FILE")
-          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-
-          echo "Project directory: $PROJECT_DIR"
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
-
-      - name: Build APK
-        run: |
-          gradle -p "${{ steps.project.outputs.dir }}" \
-            assembleDebug --no-daemon --stacktrace
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: YarShodan-APK
-          path: extracted/**/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 14
