@@ -1,5 +1,5 @@
 
-name: Build Chillehyar Mahdavi APK
+name: Build DarMasireYarShodan APK
 
 on:
   workflow_dispatch:
@@ -18,16 +18,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check project ZIP
+      - name: Check ZIP
         run: |
-          if [ ! -f project.zip ]; then
-            echo "ERROR: project.zip not found!"
-            ls -la
-            exit 1
-          fi
-          echo "Project ZIP found."
+          ls -lah
+          test -f project.zip
 
-      - name: Extract project
+      - name: Extract Android project
         run: |
           unzip -o project.zip -d extracted
           ls -la extracted/ChillehyarMahdaviV37
@@ -41,10 +37,9 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK
+      - name: Install Android SDK packages
         run: |
-          sdkmanager --licenses || true
-          sdkmanager \
+          sdkmanager --install \
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0"
@@ -54,17 +49,15 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Build Chillehyar APK
+      - name: Build APK
         run: |
-          gradle -p extracted/ChillehyarMahdaviV37 \
-            assembleDebug \
-            --no-daemon \
-            --stacktrace
+          cd extracted/ChillehyarMahdaviV37
+          gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Chillehyar-Mahdavi-V37-APK
+          name: DarMasireYarShodan-APK
           path: extracted/ChillehyarMahdaviV37/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
